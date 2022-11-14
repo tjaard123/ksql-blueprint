@@ -1,0 +1,17 @@
+# This sets up MySQL's transaction log so that Debezium can watch for changes as they occur.
+# https://debezium.io/documentation/reference/stable/connectors/mysql.html#setting-up-mysql
+
+[mysqld]
+server-id                = 223344 
+# You must enable binary logging for MySQL replication.
+# The binary logs record transaction updates for replication tools to propagate changes.
+log_bin                  = mysql-bin 
+binlog_format            = ROW 
+binlog_row_image         = FULL 
+# This is the number of days for automatic binlog file removal. The default is 0
+expire_logs_days         = 10
+# Global transaction identifiers (GTIDs) uniquely identify transactions that occur on a server within a cluster.
+# Though not required for a Debezium MySQL connector
+# using GTIDs simplifies replication and enables you to more easily confirm if primary and replica servers are consistent.
+gtid_mode                = ON
+enforce_gtid_consistency = ON
