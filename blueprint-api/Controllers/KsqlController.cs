@@ -14,13 +14,14 @@ public class KsqlController : ControllerBase
 	public KsqlController() { }
 
 	[HttpGet]
-	public async Task<List<Call>> Get()
+	// https://localhost:7178/ksql
+	public async Task<List<Vessel>> Get()
 	{
 		// https://github.com/tomasfabian/ksqlDB.RestApi.Client-DotNet
 		var ksqlDbContextOptions = new KSqlDBContextOptions(_KqlDbUrl) { ShouldPluralizeFromItemName = false };
 		await using KSqlDBContext ksqlContext = new KSqlDBContext(ksqlDbContextOptions);
 
-		var ksql = $"SELECT name, distinct_reasons AS \"DistinctReasons\", last_reason AS \"LastReason\" FROM support_view;";
+		var ksql = $"SELECT code, name FROM mv_vessels;";
 
 		var queryParameters = new QueryParameters
 		{
@@ -29,13 +30,12 @@ public class KsqlController : ControllerBase
 			[QueryParameters.AutoOffsetResetPropertyName] = AutoOffsetReset.Earliest.ToString().ToLower()
 		};
 
-		return await ksqlContext.CreateQuery<Call>(queryParameters).ToListAsync();
+		return await ksqlContext.CreateQuery<Vessel>(queryParameters).ToListAsync();
 	}
 }
 
-public class Call
+public class Vessel
 {
+	public string Code { get; set; }
 	public string Name { get; set; }
-	public int DistinctReasons { get; set; }
-	public string LastReason { get; set; }
 }

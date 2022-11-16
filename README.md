@@ -1,3 +1,13 @@
+# KSQL Blueprint
+
+A lekker blueprint for explaining the core KSQL gotchas.
+
+1. KSQL is distributed, this changes everything. [Read more](./docs/distributed.md)
+2. The missing dimension: time. [Read more](./docs/time.md)
+3. Don't just connect, transform! [Read more](./docs/transforms.md)
+4. Keys are key. [Read more](./docs/keys.md)
+5. A pull query != materialized view. [Read more](./docs/pull-queries.md)
+
 ## Spinning up the stack (Docker Compose)
 
 ```sh
@@ -23,6 +33,8 @@ To execute KSQL statements, use the spun up ksql-cli:
 # Jump into the KSQL docker image and run KSQL:
 docker exec -it ksqldb-cli ksql http://ksqldb-server:8088
 
+SET 'auto.offset.reset' = 'earliest';
+
 # Show Kafka topics & print messages
 SHOW TOPICS;
 PRINT '<the-topic>' FROM BEGINNING;
@@ -30,48 +42,11 @@ PRINT '<the-topic>' FROM BEGINNING;
 # Describe connector status
 DESCRIBE CONNECTOR <the-connector>;
 ```
+## Debezium connector
 
-
-###
-
-confluent-hub cli - can install connectors with it
+I've used confluent-hub cli to install Debezium MySql connector:
 
 ```sh
 # Debezium MySql 1.9.7
-confluent-hub install debezium/debezium-connector-mysql:1.9.7
+confluent-hub install --component-dir confluent-hub-components --no-prompt debezium/debezium-connector-mysql:1.9.7
 ```
-
-SET 'auto.offset.reset' = 'earliest';
-
-CREATE SOURCE CONNECTOR calls_reader WITH (
-    'connector.class' = 'io.debezium.connector.mysql.MySqlConnector',
-    'database.hostname' = 'mysql',
-    'database.port' = '3306',
-    'database.user' = 'example-user',
-    'database.password' = 'example-pw',
-    'database.allowPublicKeyRetrieval' = 'true',
-    'database.server.id' = '184054',
-    'database.server.name' = 'vessel-schedules-db',
-    'database.whitelist' = 'vessel-schedules',
-    'database.history.kafka.bootstrap.servers' = 'broker:9092',
-    'database.history.kafka.topic' = 'vessel-schedules',
-    'table.whitelist' = 'vessel-schedules.calls',
-    'include.schema.changes' = 'false'
-);
-
-CREATE STREAM calls WITH (
-    kafka_topic = 'vessel-schedules-db.vessel-schedules.calls',
-    value_format = 'avro'
-);
-
-CREATE TABLE support_view AS
-    SELECT after->name AS name,
-           count_distinct(after->reason) AS distinct_reasons,
-           latest_by_offset(after->reason) AS last_reason
-    FROM calls
-    GROUP BY after->name
-    EMIT CHANGES;
-
-SELECT name, distinct_reasons, last_reason
-FROM support_view
-WHERE name = 'derek';
