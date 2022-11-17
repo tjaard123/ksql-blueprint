@@ -1,5 +1,7 @@
 ## Pull queries
 
+*WIP - it's hard to explain this so I'm messing it up, but hopefully useful...*
+
 Pull queries are limited:
 
 https://docs.ksqldb.io/en/latest/developer-guide/ksqldb-reference/select-pull-query
