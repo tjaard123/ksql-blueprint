@@ -13,6 +13,8 @@ A lekker blueprint for explaining the core KSQL gotchas.
 ```sh
 # Start-up the stack in detached mode (background)
 docker compose up -d
+# Or the MS SQL version
+docker compose -f docker-compose.mssql.yml up -d
 # It's good to down your setup after use to start clean everytime
 docker compose down
 ```
@@ -20,6 +22,7 @@ docker compose down
 What we're spinning up:
 
 - Mysql 8.0 (Mounting config to allow CDC)
+- OR MS SQL 2019 (Using `docker-compose.mssql.yml`)
 - Kafka 7.3 (Zookeeper, Kafka, Schema Registry, KsqlDb (Embedded connect) & Ksql CLI)
 - [Open source Kafka UI](https://github.com/provectus/kafka-ui#env_variables)
 
@@ -44,9 +47,11 @@ DESCRIBE CONNECTOR <the-connector>;
 ```
 ## Debezium connector
 
-I've used confluent-hub cli to install Debezium MySql connector:
+I've used confluent-hub cli to install Debezium MySql connector. It's saved to `confluent-hub-components` directory and installed on `docker compose up`:
 
 ```sh
 # Debezium MySql 1.9.7
 confluent-hub install --component-dir confluent-hub-components --no-prompt debezium/debezium-connector-mysql:1.9.7
+# Debezium MS SQL 2.0.1
+confluent-hub install --component-dir confluent-hub-components --no-prompt debezium/debezium-connector-sqlserver:2.0.1
 ```
