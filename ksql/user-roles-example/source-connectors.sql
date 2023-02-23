@@ -1,0 +1,20 @@
+CREATE SOURCE CONNECTOR vessel_schedules WITH (
+    'connector.class' = 'io.debezium.connector.mysql.MySqlConnector',
+    'database.hostname' = 'mysql',
+    'database.port' = '3306',
+    'database.user' = 'example-user',
+    'database.password' = 'example-pw',
+    'database.allowPublicKeyRetrieval' = 'true',
+    'database.server.id' = '2001',
+    'database.server.name' = 'mysql',
+    'database.include.list' = 'vessel-schedules',
+    'table.include.list' = 'vessel-schedules.users,vessel-schedules.roles,vessel-schedules.userRoles',
+    'transforms' = 'unwrap,extractkey',
+    'transforms.unwrap.type' = 'io.debezium.transforms.ExtractNewRecordState',
+    'transforms.unwrap.add.fields' = 'op,table,source.ts_ms',
+    'transforms.extractkey.type' = 'org.apache.kafka.connect.transforms.ExtractField$Key',
+    'transforms.extractkey.field' = 'id',
+    'database.history.kafka.bootstrap.servers' = 'broker:9092',
+    'database.history.kafka.topic' = 'mysql.vessel-schedules.user-roles.connect-history',
+    'include.schema.changes' = 'false'
+);
