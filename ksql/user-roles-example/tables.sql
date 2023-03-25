@@ -28,12 +28,12 @@ CREATE SOURCE TABLE mv_user_roles (
     value_format = 'avro'
 );
 
-CREATE TABLE bridge_user_roles WITH (kafka_topic = 'bridge_user_roles', value_format = 'avro') AS
+CREATE TABLE bridge_user_roles WITH (kafka_topic = 'bridge_user_roles', value_format = 'avro', partitions = 6) AS
   SELECT UR.id, UR.user_id, R.*
   FROM mv_user_roles UR
   INNER JOIN mv_roles R ON UR.role_id = R.id;
 
-CREATE TABLE mv_enriched_user_roles WITH (kafka_topic = 'mv_enriched_user_roles', value_format = 'avro') AS
+CREATE TABLE mv_enriched_user_roles WITH (kafka_topic = 'mv_enriched_user_roles', value_format = 'avro', partitions = 6) AS
   SELECT UR.*, U.*
   FROM bridge_user_roles UR
   INNER JOIN mv_users U ON UR.user_id = U.id;

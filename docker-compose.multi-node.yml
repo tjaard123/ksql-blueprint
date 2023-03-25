@@ -1,0 +1,156 @@
+---
+version: '2'
+
+services:
+  mysql:
+    image: mysql:8.0.31
+    hostname: mysql
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql-pw
+      # Set up a blank database called vessel-schedules
+      MYSQL_DATABASE: vessel-schedules
+      # Set up a user named example-user
+      MYSQL_USER: example-user
+      MYSQL_PASSWORD: example-pw
+    volumes:
+      # Mount our MySql config to enable the transaction log so that Debezium can watch for changes as they occur.
+      - "./mysql/custom-config.cnf:/etc/mysql/conf.d/custom-config.cnf"
+      # Mount the seed script to a directory MySql uses to init the database
+      - "./mysql/init:/docker-entrypoint-initdb.d"
+
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  broker:
+    image: confluentinc/cp-kafka:7.3.0
+    hostname: broker
+    container_name: broker
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.3.0
+    hostname: schema-registry
+    container_name: schema-registry
+    depends_on:
+      - zookeeper
+      - broker
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "PLAINTEXT://broker:9092"
+
+  primary-ksqldb-server:
+    image: confluentinc/ksqldb-server:0.28.2
+    hostname: primary-ksqldb-server
+    container_name: primary-ksqldb-server
+    depends_on:
+      - broker
+      - schema-registry
+    ports:
+      - "8088:8088"
+    volumes:
+      # Mount the debezium MySql connector, fetched via confluent-hub cli
+      - "./confluent-hub-components/:/usr/share/kafka/plugins/"
+    environment:
+      KSQL_LISTENERS: "http://0.0.0.0:8088"
+      KSQL_BOOTSTRAP_SERVERS: "broker:9092"
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: "true"
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: "true"
+      # Configuration to embed Kafka Connect support.
+      # https://docs.confluent.io/5.4.0/ksql/docs/developer-guide/ksql-connect.html
+      KSQL_CONNECT_GROUP_ID: "ksql-connect-cluster"
+      KSQL_CONNECT_BOOTSTRAP_SERVERS: "broker:9092"
+      KSQL_CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      KSQL_CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      KSQL_CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      KSQL_CONNECT_CONFIG_STORAGE_TOPIC: "_ksql-connect-configs"
+      KSQL_CONNECT_OFFSET_STORAGE_TOPIC: "_ksql-connect-offsets"
+      KSQL_CONNECT_STATUS_STORAGE_TOPIC: "_ksql-connect-statuses"
+      KSQL_CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      KSQL_CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      KSQL_CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KSQL_CONNECT_PLUGIN_PATH: "/usr/share/kafka/plugins"
+      ## Pull query performance
+      ##
+      # https://docs.ksqldb.io/en/latest/operate-and-deploy/high-availability-pull-queries/
+      # The ksql.advertised.listener configuration specifies the URL that is propagated to other nodes for inter-node requests, so it must be reachable from other hosts/pods in the cluster. Inter-node requests are critical in a multi-node cluster
+      KSQL_KSQL_ADVERTISED_LISTENER: http://primary-ksqldb-server:8088
+      # This first configuration tells Kafka Streams to use a separate task that operates independently of the active (writer) state store to build up a replica of the state. The second config indicates that reading is allowed from the replicas (or standbys) if reading fails from the active store.
+      KSQL_KSQL_STREAMS_NUM_STANDBY_REPLICAS: 1
+      KSQL_KSQL_QUERY_PULL_ENABLE_STANDBY_READS: true
+      # This approach is sufficient to enable high availability for pull queries in ksqlDB, but it requires that every request must try the active first. A better approach is to use a heartbeating mechanism to detect failed nodes preemptively, before a pull query arrives, so the request can forward straight to a replica. Set the following configs to detect failed nodes preemptively.
+      KSQL_KSQL_HEARTBEAT_ENABLE: true
+      KSQL_KSQL_LAG_REPORTING_ENABLED: true
+
+  # Scale up, e.g. for a 4 node cluster run:
+  # docker-compose up --scale additional-ksqldb-server=3
+  additional-ksqldb-server:
+    image: confluentinc/ksqldb-server:0.28.2
+    hostname: additional-ksqldb-server
+    depends_on:
+      - primary-ksqldb-server
+    ports:
+      - "8090"
+    environment:
+      KSQL_LISTENERS: "http://0.0.0.0:8090"
+      KSQL_BOOTSTRAP_SERVERS: "broker:9092"
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      ## Pull query performance
+      ##
+      # https://docs.ksqldb.io/en/latest/operate-and-deploy/high-availability-pull-queries/
+      # The ksql.advertised.listener configuration specifies the URL that is propagated to other nodes for inter-node requests, so it must be reachable from other hosts/pods in the cluster. Inter-node requests are critical in a multi-node cluster
+      KSQL_KSQL_ADVERTISED_LISTENER: http://primary-ksqldb-server:8090
+      # This first configuration tells Kafka Streams to use a separate task that operates independently of the active (writer) state store to build up a replica of the state. The second config indicates that reading is allowed from the replicas (or standbys) if reading fails from the active store.
+      KSQL_KSQL_STREAMS_NUM_STANDBY_REPLICAS: 1
+      KSQL_KSQL_QUERY_PULL_ENABLE_STANDBY_READS: true
+      # This approach is sufficient to enable high availability for pull queries in ksqlDB, but it requires that every request must try the active first. A better approach is to use a heartbeating mechanism to detect failed nodes preemptively, before a pull query arrives, so the request can forward straight to a replica. Set the following configs to detect failed nodes preemptively.
+      KSQL_KSQL_HEARTBEAT_ENABLE: true
+      KSQL_KSQL_LAG_REPORTING_ENABLED: true      
+
+  ksqldb-cli:
+    image: confluentinc/ksqldb-cli:0.28.2
+    container_name: ksqldb-cli
+    depends_on:
+      - broker
+      - primary-ksqldb-server
+    entrypoint: /bin/sh
+    tty: true
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - broker
+      - schema-registry
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "broker:9092"
+      KAFKA_CLUSTERS_0_KSQLDBSERVER: "http://primary-ksqldb-server:8088"
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:8081"
