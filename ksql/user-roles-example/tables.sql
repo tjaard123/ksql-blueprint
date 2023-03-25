@@ -5,7 +5,7 @@ CREATE SOURCE TABLE mv_users (
   email STRING,
   age INTEGER,
   password STRING,
-  created_at DATETIME
+  created_at TIMESTAMP
 ) WITH (
     kafka_topic = 'mysql.vessel-schedules.users',
     value_format = 'avro'
