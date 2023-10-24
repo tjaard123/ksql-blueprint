@@ -20,7 +20,7 @@ docker compose up -d
 # Or the MS SQL version
 docker compose -f docker-compose.mssql.yml up -d
 # It's good to down your setup after use to start clean everytime
-docker compose down
+docker compose down -v
 ```
 
 What we're spinning up:
